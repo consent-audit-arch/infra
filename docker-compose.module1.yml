@@ -1,0 +1,143 @@
+version: "3.9"
+
+services:
+  postgres-consent:
+    image: postgres:16
+    container_name: consent-postgres
+    environment:
+      POSTGRES_USER: ${CONSENT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${CONSENT_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${CONSENT_POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - consent_postgres_data:/var/lib/postgresql/data
+    networks:
+      - consent-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CONSENT_POSTGRES_USER} -d ${CONSENT_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7
+    container_name: consent-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - consent-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  consent-command-service:
+    image: ${CONSENT_COMMAND_IMAGE}
+    container_name: consent-command-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-consent:5432/${CONSENT_POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${CONSENT_POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${CONSENT_POSTGRES_PASSWORD}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres-consent:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - opa-consent-command-policies:/shared-policies
+    networks:
+      - consent-net
+
+  opa-consent-command:
+    image: openpolicyagent/opa:0.63.0
+    container_name: opa-consent-command
+    network_mode: "service:consent-command-service"
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+    volumes:
+      - opa-consent-command-policies:/policies:ro
+    depends_on:
+      - consent-command-service
+
+  consent-query-service:
+    image: ${CONSENT_QUERY_IMAGE}
+    container_name: consent-query-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-consent:5432/${CONSENT_POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${CONSENT_POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${CONSENT_POSTGRES_PASSWORD}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres-consent:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    volumes:
+      - opa-consent-query-policies:/shared-policies
+    networks:
+      - consent-net
+
+  opa-consent-query:
+    image: openpolicyagent/opa:0.63.0
+    container_name: opa-consent-query
+    network_mode: "service:consent-query-service"
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+    volumes:
+      - opa-consent-query-policies:/policies:ro
+    depends_on:
+      - consent-query-service
+
+  dashboard-query-service:
+    image: ${DASHBOARD_QUERY_IMAGE}
+    container_name: dashboard-query-service
+    environment:
+      SPRING_DATA_MONGODB_URI: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/consent?authSource=admin
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+    volumes:
+      - opa-dashboard-query-policies:/shared-policies
+    networks:
+      - consent-net
+
+  opa-dashboard-query:
+    image: openpolicyagent/opa:0.63.0
+    container_name: opa-dashboard-query
+    network_mode: "service:dashboard-query-service"
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+    volumes:
+      - opa-dashboard-query-policies:/policies:ro
+    depends_on:
+      - dashboard-query-service
+
+volumes:
+  consent_postgres_data:
+  mongo_data:
+  opa-consent-command-policies:
+  opa-consent-query-policies:
+  opa-dashboard-query-policies:
