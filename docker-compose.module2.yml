@@ -47,7 +47,9 @@ services:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_HTTP_PORT: 8080
-      KC_HOSTNAME_URL: http://consent-keycloak:8080
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8180
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "false"
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HTTP_ENABLED: "true"
@@ -96,8 +98,12 @@ services:
       DB_URL: jdbc:postgresql://user-postgres:5432/user_db
       DB_USERNAME: ${USER_DB_USERNAME}
       DB_PASSWORD: ${USER_DB_PASSWORD}
-      KEYCLOAK_ISSUER_URI: http://consent-keycloak:8080/realms/tcc
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/tcc
+      KEYCLOAK_JWK_SET_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/certs
       OPA_URL: http://localhost:8181/v1/data/user/authz/decision
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: user-service
+      OPA_CLIENT_SECRET: ${USER_SERVICE_CLIENT_SECRET}
     depends_on:
       postgres-user:
         condition: service_healthy
@@ -113,6 +119,10 @@ services:
     container_name: opa-user-service
     network_mode: "service:user-service"
     restart: on-failure
+    environment:
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: user-service
+      OPA_CLIENT_SECRET: ${USER_SERVICE_CLIENT_SECRET}
     command:
       - "run"
       - "--server"
@@ -134,11 +144,15 @@ services:
       DB_URL: jdbc:postgresql://billing-postgres:5432/billing_db
       DB_USERNAME: ${BILLING_DB_USERNAME}
       DB_PASSWORD: ${BILLING_DB_PASSWORD}
-      KEYCLOAK_ISSUER_URI: http://consent-keycloak:8080/realms/tcc
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/tcc
+      KEYCLOAK_JWK_SET_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/certs
       KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
       BILLING_SERVICE_CLIENT_SECRET: ${BILLING_SERVICE_CLIENT_SECRET}
       OPA_URL: http://localhost:8181/v1/data/billing/authz/decision
       USER_SERVICE_URL: http://user-service:8080
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: billing-service
+      OPA_CLIENT_SECRET: ${BILLING_SERVICE_CLIENT_SECRET}
     depends_on:
       postgres-billing:
         condition: service_healthy
@@ -156,6 +170,10 @@ services:
     container_name: opa-billing-service
     network_mode: "service:billing-service"
     restart: on-failure
+    environment:
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: billing-service
+      OPA_CLIENT_SECRET: ${BILLING_SERVICE_CLIENT_SECRET}
     command:
       - "run"
       - "--server"
