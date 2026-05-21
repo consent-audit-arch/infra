@@ -187,6 +187,74 @@ services:
     depends_on:
       - billing-service
 
+  postgres-promotion:
+    image: postgres:16
+    container_name: promotion-postgres
+    environment:
+      POSTGRES_USER: promotion_service_user
+      POSTGRES_PASSWORD: promotion_service_pass
+      POSTGRES_DB: promotion_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - promotion_postgres_data:/var/lib/postgresql/data
+    networks:
+      - consent-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promotion_service_user -d promotion_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  promotion-service:
+    image: ${PROMOTION_SERVICE_IMAGE}
+    container_name: promotion-service
+    ports:
+      - "8085:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://promotion-postgres:5432/promotion_db
+      DB_USERNAME: ${PROMOTION_DB_USERNAME}
+      DB_PASSWORD: ${PROMOTION_DB_PASSWORD}
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/tcc
+      KEYCLOAK_JWK_SET_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/certs
+      KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      PROMOTION_SERVICE_CLIENT_SECRET: ${PROMOTION_SERVICE_CLIENT_SECRET}
+      OPA_URL: http://localhost:8181/v1/data/promotion/authz/decision
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: promotion-service
+      OPA_CLIENT_SECRET: ${PROMOTION_SERVICE_CLIENT_SECRET}
+      TCC_SECURITY_PIP_URL: http://consent-query-service:8080/api/v1/consent
+    depends_on:
+      postgres-promotion:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    volumes:
+      - opa-promotion-policies:/shared-policies
+    networks:
+      - consent-net
+
+  opa-promotion-service:
+    image: openpolicyagent/opa:0.63.0
+    container_name: opa-promotion-service
+    network_mode: "service:promotion-service"
+    restart: on-failure
+    environment:
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: promotion-service
+      OPA_CLIENT_SECRET: ${PROMOTION_SERVICE_CLIENT_SECRET}
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+    volumes:
+      - opa-promotion-policies:/policies:ro
+    depends_on:
+      - promotion-service
+
 networks:
   consent-net:
     external: true
@@ -196,5 +264,7 @@ volumes:
   user_postgres_data:
   keycloak_postgres_data:
   billing_postgres_data:
+  promotion_postgres_data:
   opa-user-policies:
   opa-billing-policies:
+  opa-promotion-policies:
