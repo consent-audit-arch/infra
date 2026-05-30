@@ -104,7 +104,8 @@ services:
       OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
       OPA_CLIENT_ID: user-service
       OPA_CLIENT_SECRET: ${USER_SERVICE_CLIENT_SECRET}
-      TCC_SECURITY_PIP_URL: http://consent-query-service:8080/api/v1/consent
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TCC_SECURITY_AUDIT_KAFKA_ENABLED: "true"
     depends_on:
       postgres-user:
         condition: service_healthy
@@ -127,6 +128,7 @@ services:
     command:
       - "run"
       - "--server"
+      - "--watch"
       - "--addr=0.0.0.0:8181"
       - "--set=decision_logs.console=true"
       - "/policies"
@@ -154,7 +156,8 @@ services:
       OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
       OPA_CLIENT_ID: billing-service
       OPA_CLIENT_SECRET: ${BILLING_SERVICE_CLIENT_SECRET}
-      TCC_SECURITY_PIP_URL: http://consent-query-service:8080/api/v1/consent
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TCC_SECURITY_AUDIT_KAFKA_ENABLED: "true"
     depends_on:
       postgres-billing:
         condition: service_healthy
@@ -179,6 +182,7 @@ services:
     command:
       - "run"
       - "--server"
+      - "--watch"
       - "--addr=0.0.0.0:8181"
       - "--set=decision_logs.console=true"
       - "/policies"
@@ -224,7 +228,9 @@ services:
       OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
       OPA_CLIENT_ID: promotion-service
       OPA_CLIENT_SECRET: ${PROMOTION_SERVICE_CLIENT_SECRET}
-      TCC_SECURITY_PIP_URL: http://consent-query-service:8080/api/v1/consent
+      USER_SERVICE_URL: http://user-service:8080
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TCC_SECURITY_AUDIT_KAFKA_ENABLED: "true"
     depends_on:
       postgres-promotion:
         condition: service_healthy
@@ -247,6 +253,7 @@ services:
     command:
       - "run"
       - "--server"
+      - "--watch"
       - "--addr=0.0.0.0:8181"
       - "--set=decision_logs.console=true"
       - "/policies"
