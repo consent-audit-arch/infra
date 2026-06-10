@@ -1,0 +1,77 @@
+services:
+  postgres-audit:
+    image: postgres:16
+    container_name: audit-postgres
+    environment:
+      POSTGRES_USER: ${AUDIT_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AUDIT_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AUDIT_POSTGRES_DB}
+    ports:
+      - "5436:5432"
+    volumes:
+      - audit_postgres_data:/var/lib/postgresql/data
+    networks:
+      - consent-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUDIT_POSTGRES_USER} -d ${AUDIT_POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  audit-service:
+    image: ${AUDIT_SERVICE_IMAGE}
+    container_name: audit-service
+    ports:
+      - "8086:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres-audit:5432/${AUDIT_POSTGRES_DB}
+      DB_USERNAME: ${AUDIT_POSTGRES_USER}
+      DB_PASSWORD: ${AUDIT_POSTGRES_PASSWORD}
+      KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/tcc
+      KEYCLOAK_JWK_SET_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/certs
+      OPA_URL: http://localhost:8187/v1/data/audit/authz/decision
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: audit-service
+      OPA_CLIENT_SECRET: ${AUDIT_SERVICE_CLIENT_SECRET}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      TCC_SECURITY_AUDIT_KAFKA_ENABLED: "true"
+    depends_on:
+      postgres-audit:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    volumes:
+      - opa-audit-policies:/shared-policies
+    networks:
+      - consent-net
+
+  opa-audit-service:
+    image: openpolicyagent/opa:0.63.0
+    container_name: opa-audit-service
+    network_mode: "service:audit-service"
+    restart: on-failure
+    environment:
+      OPA_KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      OPA_CLIENT_ID: audit-service
+      OPA_CLIENT_SECRET: ${AUDIT_SERVICE_CLIENT_SECRET}
+    command:
+      - "run"
+      - "--server"
+      - "--watch"
+      - "--addr=0.0.0.0:8187"
+      - "--set=decision_logs.console=true"
+      - "/policies"
+    volumes:
+      - opa-audit-policies:/policies:ro
+    depends_on:
+      - audit-service
+
+networks:
+  consent-net:
+    external: true
+    name: consent-net
+
+volumes:
+  audit_postgres_data:
+  opa-audit-policies:
