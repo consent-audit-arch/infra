@@ -105,6 +105,9 @@ services:
       OPA_CLIENT_ID: user-service
       OPA_CLIENT_SECRET: ${USER_SERVICE_CLIENT_SECRET}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      CONSENT_COMMAND_URL: http://consent-command-service:8080
+      KEYCLOAK_TOKEN_URI: http://consent-keycloak:8080/realms/tcc/protocol/openid-connect/token
+      USER_SERVICE_CLIENT_SECRET: ${USER_SERVICE_CLIENT_SECRET}
       TCC_SECURITY_AUDIT_KAFKA_ENABLED: "true"
     depends_on:
       postgres-user:

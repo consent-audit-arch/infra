@@ -1,0 +1,772 @@
+{
+	"info": {
+		"name": "TCC Consentimento LGPD",
+		"description": "Collection completa para testes do sistema de consentimento LGPD.\n\n## Pré-requisito\nRodar o script de setup do Keycloak:\n```\ncd infra && ./setup-keycloak.sh\n```\n\n## Fluxo recomendado\n1. Auth → Get Token (billing-service)\n2. User Service → Create User\n3. Consent Command → Grant Consent\n4. Explore os demais endpoints\n\n## Enums válidos\n\n### DataCategory\n`PERSONAL_DATA`, `CONTRACT_DATA`, `FINANCIAL_DATA`\n\n### Purpose\n`PROMOTION`, `BILLING`, `ANALYTICS`, `CUSTOMER_SERVICE`\n\n### IssuerType\n`USER`, `OPERATOR`, `SYSTEM`\n\n## Serviços\n| Serviço | Porta |\n|---|---|\n| consent-command | 8080 |\n| consent-query | 8081 |\n| dashboard | 8082 |\n| user-service | 8083 |\n| billing-service | 8084 |\n| audit-service | 8086 |\n| Keycloak | 8180 |",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{ "key": "base_url", "value": "http://localhost", "type": "string" },
+		{ "key": "kc_url", "value": "http://localhost:8180", "type": "string" },
+		{ "key": "consent_command_port", "value": "8080", "type": "string" },
+		{ "key": "consent_query_port", "value": "8081", "type": "string" },
+		{ "key": "dashboard_port", "value": "8082", "type": "string" },
+		{ "key": "user_service_port", "value": "8083", "type": "string" },
+		{ "key": "billing_service_port", "value": "8084", "type": "string" },
+		{ "key": "audit_service_port", "value": "8086", "type": "string" },
+		{ "key": "billing_client_secret", "value": "billing_demo", "type": "string" },
+		{ "key": "postman_client_secret", "value": "postman_demo", "type": "string" },
+		{ "key": "test_username", "value": "testuser", "type": "string" },
+		{ "key": "test_password", "value": "testpass", "type": "string" },
+		{ "key": "token_client_credentials", "value": "", "type": "string" },
+		{ "key": "token_password", "value": "", "type": "string" },
+		{ "key": "user_id", "value": "", "type": "string" },
+		{ "key": "billing_id", "value": "", "type": "string" },
+		{ "key": "correlation_id", "value": "", "type": "string" }
+	],
+	"item": [
+		{
+			"name": "Auth",
+			"description": "Endpoints para obter tokens de acesso via Keycloak.",
+			"item": [
+				{
+					"name": "Get Token (billing-service / client_credentials)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const json = pm.response.json();",
+									"pm.collectionVariables.set('token_client_credentials', json.access_token);",
+									"",
+									"pm.test('Token obtido com sucesso', () => {",
+									"    pm.expect(json.access_token).to.not.be.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" },
+							{ "key": "Authorization", "value": "Basic {{billing_client_secret}}", "disabled": true }
+						],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{ "key": "grant_type", "value": "client_credentials", "type": "text" },
+								{ "key": "client_id", "value": "billing-service", "type": "text" },
+								{ "key": "client_secret", "value": "{{billing_client_secret}}", "type": "text" }
+							]
+						},
+						"url": {
+							"raw": "{{kc_url}}/realms/tcc/protocol/openid-connect/token",
+							"host": ["{{kc_url}}"],
+							"path": ["realms", "tcc", "protocol", "openid-connect", "token"]
+						}
+					}
+				},
+				{
+					"name": "Get Token (postman / password grant)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const json = pm.response.json();",
+									"pm.collectionVariables.set('token_password', json.access_token);",
+									"",
+									"pm.test('Token obtido com sucesso', () => {",
+									"    pm.expect(json.access_token).to.not.be.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+						],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{ "key": "grant_type", "value": "password", "type": "text" },
+								{ "key": "client_id", "value": "postman", "type": "text" },
+								{ "key": "client_secret", "value": "{{postman_client_secret}}", "type": "text" },
+								{ "key": "username", "value": "{{test_username}}", "type": "text" },
+								{ "key": "password", "value": "{{test_password}}", "type": "text" }
+							]
+						},
+						"url": {
+							"raw": "{{kc_url}}/realms/tcc/protocol/openid-connect/token",
+							"host": ["{{kc_url}}"],
+							"path": ["realms", "tcc", "protocol", "openid-connect", "token"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Consent Command",
+			"description": "Serviço de comandos de consentimento (porta {{consent_command_port}}). Usa token client_credentials.",
+			"item": [
+				{
+					"name": "Grant Consent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 202 Accepted', () => pm.expect(pm.response.code).to.equal(202));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"ownerId\": 1,\n    \"legalBasis\": \"CONSENT\",\n    \"occurredAt\": \"2025-05-25T05:00:00\",\n    \"issuedBy\": {\n        \"id\": 1,\n        \"issuer\": \"USER\"\n    },\n    \"authorizations\": [\n        {\n            \"dataCategory\": \"FINANCIAL_DATA\",\n            \"purposes\": [\"BILLING\"]\n        },\n        {\n            \"dataCategory\": \"PERSONAL_DATA\",\n            \"purposes\": [\"BILLING\"]\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{consent_command_port}}/api/v1/consent",
+							"host": ["{{base_url}}"],
+							"port": "{{consent_command_port}}",
+							"path": ["api", "v1", "consent"]
+						}
+					}
+				},
+				{
+					"name": "Revoke Consent",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 202 Accepted', () => pm.expect(pm.response.code).to.equal(202));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"ownerId\": 1,\n    \"authorizations\": [\n        {\n            \"dataCategory\": \"PERSONAL_DATA\",\n            \"purposes\": [\"BILLING\"]\n        }\n    ],\n    \"reason\": \"User requested data removal\",\n    \"occurredAt\": \"2025-05-25T05:00:00\",\n    \"issuedBy\": {\n        \"id\": 1,\n        \"issuer\": \"SYSTEM\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{consent_command_port}}/api/v1/consent/1/revoke",
+							"host": ["{{base_url}}"],
+							"port": "{{consent_command_port}}",
+							"path": ["api", "v1", "consent", "1", "revoke"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Consent Query",
+			"description": "Serviço de consulta de consentimentos (porta {{consent_query_port}}). Usa token client_credentials.",
+			"item": [
+				{
+					"name": "Get Consents by User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.expect(pm.response.code).to.equal(200));",
+									"",
+									"const json = pm.response.json();",
+									"if (json && json.length > 0) {",
+									"    pm.test('Consentimentos retornados', () => pm.expect(json.length).to.be.above(0));",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{consent_query_port}}/api/v1/consent/{{user_id}}",
+							"host": ["{{base_url}}"],
+							"port": "{{consent_query_port}}",
+							"path": ["api", "v1", "consent", "{{user_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Check Authorization",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{consent_query_port}}/api/v1/consent/{{user_id}}/authorizations?dataCategory=PERSONAL_DATA&purpose=BILLING",
+							"host": ["{{base_url}}"],
+							"port": "{{consent_query_port}}",
+							"path": ["api", "v1", "consent", "{{user_id}}", "authorizations"],
+							"query": [
+								{ "key": "dataCategory", "value": "PERSONAL_DATA" },
+								{ "key": "purpose", "value": "BILLING" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Consent History",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{consent_query_port}}/api/v1/consent/{{user_id}}/history",
+							"host": ["{{base_url}}"],
+							"port": "{{consent_query_port}}",
+							"path": ["api", "v1", "consent", "{{user_id}}", "history"]
+						}
+					}
+				},
+				{
+					"name": "Batch Authorization",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"userIds\": [1],\n    \"dataCategory\": \"PERSONAL_DATA\",\n    \"purpose\": \"BILLING\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{consent_query_port}}/api/v1/consent/batch/authorizations",
+							"host": ["{{base_url}}"],
+							"port": "{{consent_query_port}}",
+							"path": ["api", "v1", "consent", "batch", "authorizations"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Dashboard",
+			"description": "Serviço de métricas e dashboard (porta {{dashboard_port}}). Usa token client_credentials.",
+			"item": [
+				{
+					"name": "Get Metrics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{dashboard_port}}/dashboard/metrics",
+							"host": ["{{base_url}}"],
+							"port": "{{dashboard_port}}",
+							"path": ["dashboard", "metrics"]
+						}
+					}
+				},
+				{
+					"name": "Get Time Series",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{dashboard_port}}/dashboard/metrics/timeseries?from=2025-01-01&to=2026-12-31",
+							"host": ["{{base_url}}"],
+							"port": "{{dashboard_port}}",
+							"path": ["dashboard", "metrics", "timeseries"],
+							"query": [
+								{ "key": "from", "value": "2025-01-01" },
+								{ "key": "to", "value": "2026-12-31" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Metrics by Finality",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{dashboard_port}}/dashboard/metrics/finality/BILLING",
+							"host": ["{{base_url}}"],
+							"port": "{{dashboard_port}}",
+							"path": ["dashboard", "metrics", "finality", "BILLING"]
+						}
+					}
+				},
+				{
+					"name": "Get Metrics by Category",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{dashboard_port}}/dashboard/metrics/category/PERSONAL_DATA",
+							"host": ["{{base_url}}"],
+							"port": "{{dashboard_port}}",
+							"path": ["dashboard", "metrics", "category", "PERSONAL_DATA"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "User Service",
+			"description": "Serviço de usuários (porta {{user_service_port}}). Endpoints abertos não precisam de token; endpoints protegidos usam token_password.",
+			"item": [
+				{
+					"name": "Create User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+									"",
+									"const json = pm.response.json();",
+									"if (json && json.id) {",
+									"    pm.collectionVariables.set('user_id', String(json.id));",
+									"    pm.test('User ID salvo', () => pm.expect(json.id).to.not.be.empty);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"fullName\": \"João Silva\",\n    \"email\": \"joao@example.com\",\n    \"documentNumber\": \"12345678900\",\n    \"birthDate\": \"1990-01-01\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{user_service_port}}/api/v1/users",
+							"host": ["{{base_url}}"],
+							"port": "{{user_service_port}}",
+							"path": ["api", "v1", "users"]
+						}
+					}
+				},
+				{
+					"name": "List All Users",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}:{{user_service_port}}/api/v1/users",
+							"host": ["{{base_url}}"],
+							"port": "{{user_service_port}}",
+							"path": ["api", "v1", "users"]
+						}
+					}
+				},
+				{
+					"name": "Get User by ID (protegido)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" },
+							{ "key": "X-Purpose", "value": "BILLING" },
+							{ "key": "X-Data-Subject-Id", "value": "{{user_id}}" },
+							{ "key": "X-Data-Categories", "value": "PERSONAL_DATA" },
+							{ "key": "X-Correlation-Id", "value": "{{$guid}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{user_service_port}}/api/v1/users/{{user_id}}",
+							"host": ["{{base_url}}"],
+							"port": "{{user_service_port}}",
+							"path": ["api", "v1", "users", "{{user_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Batch Users (protegido)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" },
+							{ "key": "X-Purpose", "value": "BILLING" },
+							{ "key": "X-Correlation-Id", "value": "{{$guid}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"ids\": [1, 2]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{user_service_port}}/api/v1/users/batch",
+							"host": ["{{base_url}}"],
+							"port": "{{user_service_port}}",
+							"path": ["api", "v1", "users", "batch"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Billing Service",
+			"description": "Serviço de cobrança (porta {{billing_service_port}}). Endpoints protegidos usam token_client_credentials.",
+			"item": [
+				{
+					"name": "Create Billing Record",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+									"",
+									"const json = pm.response.json();",
+									"if (json && json.id) {",
+									"    pm.collectionVariables.set('billing_id', String(json.id));",
+									"    pm.test('Billing ID salvo', () => pm.expect(json.id).to.not.be.empty);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"dataSubjectId\": {{user_id}},\n    \"description\": \"Análise de crédito\",\n    \"amount\": 150.00\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}:{{billing_service_port}}/api/v1/billing",
+							"host": ["{{base_url}}"],
+							"port": "{{billing_service_port}}",
+							"path": ["api", "v1", "billing"]
+						}
+					}
+				},
+				{
+					"name": "Get Billing Record",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{billing_service_port}}/api/v1/billing/{{billing_id}}",
+							"host": ["{{base_url}}"],
+							"port": "{{billing_service_port}}",
+							"path": ["api", "v1", "billing", "{{billing_id}}"]
+						}
+					}
+				},
+				{
+					"name": "Get Billing with Profile (legado)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.expect(pm.response.code).to.equal(200));",
+									"",
+									"const json = pm.response.json();",
+									"pm.test('Resposta contém billingRecord', () => pm.expect(json).to.have.property('billingRecord'));",
+									"pm.test('Resposta contém userProfile', () => pm.expect(json).to.have.property('userProfile'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" },
+							{ "key": "X-Purpose", "value": "BILLING" },
+							{ "key": "X-Data-Subject-Id", "value": "{{user_id}}" },
+							{ "key": "X-Data-Categories", "value": "FINANCIAL_DATA,PERSONAL_DATA" },
+							{ "key": "X-Correlation-Id", "value": "{{$guid}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{billing_service_port}}/api/v1/billing/{{billing_id}}/with-profile",
+							"host": ["{{base_url}}"],
+							"port": "{{billing_service_port}}",
+							"path": ["api", "v1", "billing", "{{billing_id}}", "with-profile"]
+						}
+					}
+				},
+				{
+					"name": "Get Billing with Profile by User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.expect(pm.response.code).to.equal(200));",
+									"",
+									"const json = pm.response.json();",
+									"pm.test('Resposta contém billingRecord', () => pm.expect(json).to.have.property('billingRecord'));",
+									"pm.test('Resposta contém userProfile', () => pm.expect(json).to.have.property('userProfile'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" },
+							{ "key": "X-Purpose", "value": "BILLING" },
+							{ "key": "X-Data-Categories", "value": "FINANCIAL_DATA,PERSONAL_DATA" },
+							{ "key": "X-Data-Subject-Id", "value": "{{user_id}}" },
+							{ "key": "X-Correlation-Id", "value": "{{$guid}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{billing_service_port}}/api/v1/billing/users/{{user_id}}/billing/{{billing_id}}/with-profile",
+							"host": ["{{base_url}}"],
+							"port": "{{billing_service_port}}",
+							"path": ["api", "v1", "billing", "users", "{{user_id}}", "billing", "{{billing_id}}", "with-profile"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Audit Service",
+			"description": "Serviço de auditoria de acessos (porta {{audit_service_port}}). Usa token_password (exige role AUDITOR).",
+			"item": [
+				{
+					"name": "Stats",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.expect(pm.response.code).to.equal(200));",
+									"",
+									"const json = pm.response.json();",
+									"pm.test('Contém totalAllows', () => pm.expect(json).to.have.property('totalAllows'));",
+									"pm.test('Contém totalDenies', () => pm.expect(json).to.have.property('totalDenies'));"
+								],
+								"type": "text/javascript"
+							},
+							"description": "Após executar, copie um correlation_id de um evento no Subject Trail ou Client Trail para a variável correlation_id e use no Access Proof."
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_password}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{audit_service_port}}/api/v1/audit/stats?dataSubjectId=1&clientId=postman",
+							"host": ["{{base_url}}"],
+							"port": "{{audit_service_port}}",
+							"path": ["api", "v1", "audit", "stats"],
+							"query": [
+								{ "key": "from", "value": "", "description": "Início do período (ISO DateTime)" },
+								{ "key": "to", "value": "", "description": "Fim do período (ISO DateTime)" },
+								{ "key": "dataSubjectId", "value": "1" },
+								{ "key": "clientId", "value": "postman" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Subject Trail",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.expect(pm.response.code).to.equal(200));",
+									"",
+									"const json = pm.response.json();",
+									"pm.test('É um array', () => pm.expect(json).to.be.an('array'));",
+									"",
+									"if (json && json.length > 0 && json[0].traceId) {",
+									"    pm.collectionVariables.set('correlation_id', json[0].traceId);",
+									"    pm.test('correlation_id salvo', () => pm.expect(json[0].traceId).to.not.be.empty);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_password}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{audit_service_port}}/api/v1/audit/subjects/1/trail",
+							"host": ["{{base_url}}"],
+							"port": "{{audit_service_port}}",
+							"path": ["api", "v1", "audit", "subjects", "1", "trail"],
+							"query": [
+								{ "key": "from", "value": "", "description": "Início do período (ISO DateTime)" },
+								{ "key": "to", "value": "", "description": "Fim do período (ISO DateTime)" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Client Trail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_password}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{audit_service_port}}/api/v1/audit/clients/postman/trail",
+							"host": ["{{base_url}}"],
+							"port": "{{audit_service_port}}",
+							"path": ["api", "v1", "audit", "clients", "postman", "trail"],
+							"query": [
+								{ "key": "from", "value": "", "description": "Início do período (ISO DateTime)" },
+								{ "key": "to", "value": "", "description": "Fim do período (ISO DateTime)" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Access Proof",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.expect(pm.response.code).to.equal(200));",
+									"",
+									"const json = pm.response.json();",
+									"pm.test('Contém traceId', () => pm.expect(json).to.have.property('traceId'));",
+									"pm.test('Contém access', () => pm.expect(json).to.have.property('access'));",
+									"pm.test('Contém consentProof', () => pm.expect(json).to.have.property('consentProof'));",
+									"pm.test('Contém verdict', () => pm.expect(json).to.have.property('verdict'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_password}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{audit_service_port}}/api/v1/audit/access/{{correlation_id}}/proof",
+							"host": ["{{base_url}}"],
+							"port": "{{audit_service_port}}",
+							"path": ["api", "v1", "audit", "access", "{{correlation_id}}", "proof"]
+						}
+					}
+				},
+				{
+					"name": "Compliance Report",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_password}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{audit_service_port}}/api/v1/audit/subjects/1/compliance",
+							"host": ["{{base_url}}"],
+							"port": "{{audit_service_port}}",
+							"path": ["api", "v1", "audit", "subjects", "1", "compliance"],
+							"query": [
+								{ "key": "from", "value": "", "description": "Início do período (ISO DateTime)" },
+								{ "key": "to", "value": "", "description": "Fim do período (ISO DateTime)" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Anomalies",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_password}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{audit_service_port}}/api/v1/audit/anomalies",
+							"host": ["{{base_url}}"],
+							"port": "{{audit_service_port}}",
+							"path": ["api", "v1", "audit", "anomalies"],
+							"query": [
+								{ "key": "from", "value": "", "description": "Início do período (ISO DateTime)" },
+								{ "key": "to", "value": "", "description": "Fim do período (ISO DateTime)" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Security Tests",
+			"description": "Testes de segurança: requisições sem token, com token inválido, purposes não permitidos, etc.",
+			"item": [
+				{
+					"name": "No Token → 401",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}:{{billing_service_port}}/api/v1/billing/1",
+							"host": ["{{base_url}}"],
+							"port": "{{billing_service_port}}",
+							"path": ["api", "v1", "billing", "1"]
+						}
+					}
+				},
+				{
+					"name": "Wrong Purpose → 403",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{token_client_credentials}}" },
+							{ "key": "X-Purpose", "value": "MARKETING" },
+							{ "key": "X-Data-Categories", "value": "FINANCIAL_DATA" },
+							{ "key": "X-Data-Subject-Id", "value": "{{user_id}}" },
+							{ "key": "X-Correlation-Id", "value": "{{$guid}}" }
+						],
+						"url": {
+							"raw": "{{base_url}}:{{billing_service_port}}/api/v1/billing/users/{{user_id}}/billing/{{billing_id}}/with-profile",
+							"host": ["{{base_url}}"],
+							"port": "{{billing_service_port}}",
+							"path": ["api", "v1", "billing", "users", "{{user_id}}", "billing", "{{billing_id}}", "with-profile"]
+						}
+					}
+				}
+			]
+		}
+	]
+}

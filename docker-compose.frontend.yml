@@ -1,0 +1,29 @@
+services:
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    container_name: consent-frontend
+    ports:
+      - "8087:80"
+    depends_on:
+      consent-command-service:
+        condition: service_started
+      consent-query-service:
+        condition: service_started
+      dashboard-query-service:
+        condition: service_started
+      user-service:
+        condition: service_started
+      billing-service:
+        condition: service_started
+      promotion-service:
+        condition: service_started
+      audit-service:
+        condition: service_started
+    networks:
+      - consent-net
+    restart: unless-stopped
+
+networks:
+  consent-net:
+    external: true
+    name: consent-net
